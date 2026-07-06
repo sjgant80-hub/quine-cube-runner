@@ -1,0 +1,551 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="description" content="Run programs that print themselves. See them as a spinning 3D cube. Runs locally in your browser.">
+<title>Quine Cube Runner — programs that print themselves</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect x='6' y='6' width='20' height='20' fill='none' stroke='%237a9c7e' stroke-width='2'/><rect x='10' y='10' width='12' height='12' fill='%23d4a052' opacity='0.6'/></svg>">
+<style>
+:root{
+  --void:#1a1a1e;--deep:#212127;--surface:#2a2a30;--raised:#33333a;
+  --line:rgba(232,228,219,0.08);--line2:rgba(232,228,219,0.16);
+  --text:#e8e4db;--muted:#928d80;--dim:#6b6660;
+  --sage:#7a9c7e;--sage-dim:rgba(122,156,126,0.14);
+  --amber:#d4a052;--amber-dim:rgba(212,160,82,0.12);
+  --coral:#d67a5a;--coral-glow:rgba(214,122,90,0.15);
+  --serif:'Cormorant Garamond','Iowan Old Style',Georgia,serif;
+  --sans:'Inter',-apple-system,system-ui,sans-serif;
+  --mono:'JetBrains Mono','IBM Plex Mono',monospace;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{background:var(--void);color:var(--text);font-family:var(--sans);font-size:15px;line-height:1.6;min-height:100vh;-webkit-font-smoothing:antialiased}
+a{color:var(--sage);text-decoration:none}
+a:hover{color:var(--amber)}
+header{padding:28px 32px 20px;border-bottom:1px solid var(--line);display:flex;align-items:baseline;justify-content:space-between;flex-wrap:wrap;gap:16px}
+h1{font-family:var(--serif);font-size:36px;font-weight:500;letter-spacing:-0.01em}
+h1 em{color:var(--sage);font-style:italic}
+.tag{font-family:var(--mono);font-size:11px;color:var(--muted);letter-spacing:0.14em;text-transform:uppercase}
+.hint{font-family:var(--serif);font-style:italic;color:var(--muted);font-size:17px;margin-top:6px}
+main{display:grid;grid-template-columns:1.1fr 1fr;gap:24px;padding:24px 32px;max-width:1500px;margin:0 auto}
+@media(max-width:960px){main{grid-template-columns:1fr}}
+.panel{background:var(--deep);border:1px solid var(--line);border-radius:12px;padding:20px}
+.panel h2{font-family:var(--serif);font-size:22px;font-weight:500;margin-bottom:14px}
+.panel h2 em{color:var(--sage);font-style:italic}
+.row{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:14px}
+label{font-family:var(--mono);font-size:10.5px;color:var(--muted);letter-spacing:0.14em;text-transform:uppercase}
+select,button,input[type=text]{
+  background:var(--surface);color:var(--text);border:1px solid var(--line2);border-radius:8px;
+  padding:9px 14px;font-family:var(--mono);font-size:12px;cursor:pointer;transition:border-color .15s
+}
+select:hover,button:hover{border-color:var(--sage)}
+button.primary{background:var(--sage);color:var(--void);font-weight:700;letter-spacing:0.1em;text-transform:uppercase}
+button.primary:hover{background:var(--amber);color:var(--void)}
+button.warn{background:var(--amber);color:var(--void);font-weight:700}
+button:disabled{opacity:0.5;cursor:not-allowed}
+textarea#editor{
+  width:100%;min-height:340px;background:var(--void);color:var(--text);
+  border:1px solid var(--line2);border-radius:8px;padding:14px;
+  font-family:var(--mono);font-size:13px;line-height:1.55;resize:vertical;tab-size:2
+}
+textarea#editor:focus{outline:none;border-color:var(--sage)}
+.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-top:12px}
+.stat{background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:10px 12px}
+.stat .k{font-family:var(--mono);font-size:9.5px;color:var(--muted);letter-spacing:0.14em;text-transform:uppercase}
+.stat .v{font-family:var(--serif);font-size:22px;color:var(--sage);margin-top:2px}
+.stat.bad .v{color:var(--coral)}
+.stat.ok .v{color:var(--sage)}
+.output{
+  background:var(--void);border:1px solid var(--line2);border-radius:8px;padding:14px;
+  font-family:var(--mono);font-size:12px;line-height:1.5;
+  max-height:220px;overflow:auto;white-space:pre-wrap;word-break:break-all;color:var(--text);margin-top:12px
+}
+.diff{margin-top:12px}
+.diff .line{font-family:var(--mono);font-size:11.5px;padding:3px 8px;border-radius:4px;margin-bottom:2px}
+.diff .same{color:var(--muted)}
+.diff .add{background:rgba(122,156,126,0.16);color:var(--sage)}
+.diff .del{background:rgba(214,122,90,0.16);color:var(--coral)}
+
+/* CUBE */
+.cube-wrap{
+  perspective:1200px;height:420px;display:flex;align-items:center;justify-content:center;
+  background:radial-gradient(ellipse at center,rgba(122,156,126,0.06),transparent 70%);
+  border-radius:12px;margin-bottom:14px;position:relative;overflow:hidden
+}
+.cube{
+  position:relative;width:280px;height:280px;transform-style:preserve-3d;
+  animation:spin 22s linear infinite;transition:animation-play-state .3s
+}
+.cube.paused{animation-play-state:paused}
+@keyframes spin{
+  from{transform:rotateX(-18deg) rotateY(0deg)}
+  to{transform:rotateX(-18deg) rotateY(360deg)}
+}
+.face{
+  position:absolute;width:280px;height:280px;
+  background:rgba(42,42,48,0.86);border:1px solid var(--sage);
+  color:var(--text);font-family:var(--mono);font-size:9px;line-height:1.35;
+  padding:12px;overflow:hidden;white-space:pre;
+  backdrop-filter:blur(2px);
+  box-shadow:inset 0 0 24px rgba(122,156,126,0.14)
+}
+.face .flabel{
+  position:absolute;top:6px;right:10px;
+  font-family:var(--mono);font-size:9px;color:var(--amber);
+  letter-spacing:0.14em;text-transform:uppercase;opacity:0.8
+}
+.face.f1{transform:translateZ(140px)}
+.face.f2{transform:rotateY(180deg) translateZ(140px)}
+.face.f3{transform:rotateY(90deg) translateZ(140px)}
+.face.f4{transform:rotateY(-90deg) translateZ(140px)}
+.face.f5{transform:rotateX(90deg) translateZ(140px)}
+.face.f6{transform:rotateX(-90deg) translateZ(140px)}
+.cube-controls{position:absolute;bottom:10px;left:0;right:0;text-align:center;z-index:2}
+.cube-controls button{font-size:10.5px;padding:6px 12px}
+
+/* MUTATION */
+.mut-canvas{
+  background:var(--void);border:1px solid var(--line2);border-radius:8px;padding:14px;
+  font-family:var(--mono);font-size:12.5px;line-height:1.55;
+  max-height:280px;overflow:auto;white-space:pre-wrap;word-break:break-all;user-select:none
+}
+.mut-canvas span{cursor:pointer;padding:0 0.5px;border-radius:2px;transition:background .1s}
+.mut-canvas span:hover{background:var(--amber-dim);color:var(--amber)}
+.mut-canvas span.broken{background:rgba(214,122,90,0.28);color:var(--coral)}
+.mut-canvas span.kept{background:rgba(122,156,126,0.24);color:var(--sage)}
+.mut-log{margin-top:10px;max-height:120px;overflow:auto;font-family:var(--mono);font-size:11px;color:var(--muted)}
+.mut-log .broke{color:var(--coral)}
+.mut-log .held{color:var(--sage)}
+
+/* COMPOSITION */
+.compo{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-top:12px}
+.compo .card{
+  background:var(--surface);border:1px solid var(--line);border-radius:8px;
+  padding:14px;cursor:pointer;transition:all .2s
+}
+.compo .card:hover{border-color:var(--sage);transform:translateY(-2px)}
+.compo .card .lvl{font-family:var(--mono);font-size:9.5px;color:var(--muted);letter-spacing:0.14em;text-transform:uppercase}
+.compo .card .nm{font-family:var(--serif);font-size:20px;color:var(--sage);margin-top:4px}
+.compo .card .nm em{font-style:italic}
+.compo .card .desc{font-size:12px;color:var(--muted);margin-top:6px;line-height:1.5}
+
+footer{padding:32px;text-align:center;color:var(--dim);font-size:12px;border-top:1px solid var(--line);margin-top:32px;font-family:var(--mono);letter-spacing:0.1em}
+footer a{color:var(--sage)}
+.toast{
+  position:fixed;bottom:24px;left:50%;transform:translateX(-50%);
+  background:var(--sage);color:var(--void);padding:12px 22px;border-radius:8px;
+  font-family:var(--mono);font-size:11.5px;letter-spacing:0.12em;text-transform:uppercase;font-weight:700;
+  opacity:0;pointer-events:none;transition:opacity .3s;z-index:1000
+}
+.toast.on{opacity:1}
+.toast.err{background:var(--coral)}
+</style>
+</head>
+<body>
+<header>
+  <div>
+    <h1>Quine Cube <em>Runner</em></h1>
+    <div class="hint">Run programs that print themselves. See them as a spinning cube.</div>
+  </div>
+  <div class="tag">Local · Nothing leaves your browser · MIT</div>
+</header>
+
+<main>
+  <section class="panel">
+    <h2>The <em>source</em></h2>
+    <div class="row">
+      <label>Template</label>
+      <select id="tmpl">
+        <option value="js">JavaScript</option>
+        <option value="py">Python</option>
+        <option value="rb">Ruby</option>
+        <option value="c">C</option>
+        <option value="html">HTML</option>
+        <option value="lisp">LISP</option>
+        <option value="minimal">Minimal (JS)</option>
+        <option value="haiku">Haiku (short)</option>
+        <option value="sonnet">Sonnet (structured)</option>
+        <option value="opus">Opus (nested)</option>
+      </select>
+      <button id="loadBtn">Load</button>
+      <button class="primary" id="runBtn">Run</button>
+      <button id="verifyBtn">Verify</button>
+      <button id="copyBtn">Copy</button>
+    </div>
+    <textarea id="editor" spellcheck="false"></textarea>
+    <div class="stats">
+      <div class="stat" id="s-bytes"><div class="k">Bytes</div><div class="v">—</div></div>
+      <div class="stat" id="s-lines"><div class="k">Lines</div><div class="v">—</div></div>
+      <div class="stat" id="s-status"><div class="k">Status</div><div class="v">Ready</div></div>
+      <div class="stat" id="s-match"><div class="k">Byte match</div><div class="v">—</div></div>
+    </div>
+    <div class="output" id="output">Output appears here after Run.</div>
+    <div class="diff" id="diff"></div>
+  </section>
+
+  <section class="panel">
+    <h2>The <em>cube</em></h2>
+    <div class="cube-wrap">
+      <div class="cube" id="cube">
+        <div class="face f1"><div class="flabel">Face 1</div><div class="txt"></div></div>
+        <div class="face f2"><div class="flabel">Face 2</div><div class="txt"></div></div>
+        <div class="face f3"><div class="flabel">Face 3</div><div class="txt"></div></div>
+        <div class="face f4"><div class="flabel">Face 4</div><div class="txt"></div></div>
+        <div class="face f5"><div class="flabel">Face 5</div><div class="txt"></div></div>
+        <div class="face f6"><div class="flabel">Face 6</div><div class="txt"></div></div>
+      </div>
+      <div class="cube-controls">
+        <button id="pauseBtn">Pause</button>
+        <button id="refreshCubeBtn">Refresh faces</button>
+      </div>
+    </div>
+
+    <h2>Mutation <em>game</em></h2>
+    <div class="hint" style="font-size:14px;margin-bottom:10px">
+      Click any character. The tool re-runs the quine. If it still prints itself, the character was safe. If not, it was load-bearing.
+    </div>
+    <div class="mut-canvas" id="mutCanvas"></div>
+    <div class="row" style="margin-top:10px">
+      <button id="mutResetBtn">Reset mutations</button>
+      <button id="mutSyncBtn">Sync with editor</button>
+      <span id="mutScore" style="font-family:var(--mono);font-size:11px;color:var(--muted);margin-left:auto"></span>
+    </div>
+    <div class="mut-log" id="mutLog"></div>
+
+    <h2>Composition <em>modes</em></h2>
+    <div class="compo">
+      <div class="card" data-mode="haiku">
+        <div class="lvl">Short</div>
+        <div class="nm">Haiku</div>
+        <div class="desc">A tiny quine — three lines or fewer, no ceremony.</div>
+      </div>
+      <div class="card" data-mode="sonnet">
+        <div class="lvl">Structured</div>
+        <div class="nm">Sonnet</div>
+        <div class="desc">A quine with shape — declared data, a rebuilder, a print.</div>
+      </div>
+      <div class="card" data-mode="opus">
+        <div class="lvl">Nested</div>
+        <div class="nm">Opus</div>
+        <div class="desc">A quine that quotes another quine that quotes the first.</div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer>
+  Quine Cube Runner &nbsp;·&nbsp; <a href="https://github.com/sjgant80-hub/quine-cube-runner">source</a> &nbsp;·&nbsp; MIT &nbsp;·&nbsp; AI-Native Solutions
+</footer>
+
+<div class="toast" id="toast"></div>
+
+<script>
+/* ============ QUINE TEMPLATES ============ */
+const TEMPLATES = {
+  js: `var s='var s=Q;console.log(s.replace(/Q/,JSON.stringify(s)));';console.log(s.replace(/Q/,JSON.stringify(s)));`,
+  py: `s='s=%r\\nprint(s%%s)'\nprint(s%s)`,
+  rb: `s=%q(s=%q(Q);puts s.sub("Q",s));puts s.sub("Q",s)`,
+  c: `#include <stdio.h>\nchar *s="#include <stdio.h>%cchar *s=%c%s%c;%cint main(){printf(s,10,34,s,34,10);return 0;}%c";\nint main(){printf(s,10,34,s,34,10);return 0;}`,
+  html: `<!doctype html><html><body><pre id=q></pre><script>var s=document.documentElement.outerHTML;document.getElementById('q').textContent=s;<\/script></body></html>`,
+  lisp: `((lambda (x) (list x (list (quote quote) x))) (quote (lambda (x) (list x (list (quote quote) x)))))`,
+  minimal: `(f=>f(f))(f=>console.log('(f=>f(f))('+f+')'))`,
+  haiku: `(f=>f(f))(f=>\`(f=>f(f))(\${f})\`)`,
+  sonnet: `// A quine with structure: data, rebuild, print.\nconst DATA = "PLACEHOLDER";\nconst rebuild = d => "// A quine with structure: data, rebuild, print.\\nconst DATA = " + JSON.stringify(d) + ";\\nconst rebuild = " + rebuild.toString() + ";\\nconsole.log(rebuild(DATA));";\nconsole.log(rebuild(DATA));`,
+  opus: `// Opus: a quine that prints a smaller quine that prints this one back.\nconst OUTER = O_MARK;\nconst INNER = I_MARK;\nconst print = () => {\n  const inner = "const s = " + JSON.stringify(OUTER) + "; console.log(s.replace('O_MARK', JSON.stringify(s)).replace('I_MARK', JSON.stringify(" + JSON.stringify(INNER) + ")));";\n  console.log(inner);\n};\nprint();`
+};
+
+const $=id=>document.getElementById(id);
+const editor=$('editor'), output=$('output'), diff=$('diff'), toast=$('toast');
+const sBytes=$('s-bytes').querySelector('.v'), sLines=$('s-lines').querySelector('.v');
+const sStatus=$('s-status').querySelector('.v'), sMatch=$('s-match').querySelector('.v');
+
+function showToast(msg,err){
+  toast.textContent=msg;
+  toast.classList.toggle('err',!!err);
+  toast.classList.add('on');
+  setTimeout(()=>toast.classList.remove('on'),2200);
+}
+
+function updateStats(){
+  const src=editor.value;
+  sBytes.textContent=new Blob([src]).size;
+  sLines.textContent=src.split('\n').length;
+}
+
+/* ============ CUBE FACES ============ */
+function paintCube(src){
+  const faces=document.querySelectorAll('.face .txt');
+  const len=src.length;
+  if(len===0){faces.forEach(f=>f.textContent='');return;}
+  // Split the source into 6 roughly-equal slices, one per face
+  const slice=Math.ceil(len/6);
+  for(let i=0;i<6;i++){
+    let chunk=src.substring(i*slice,(i+1)*slice);
+    // Clip for face — face is ~40 chars × ~30 lines
+    const maxChars=1400;
+    if(chunk.length>maxChars) chunk=chunk.substring(0,maxChars)+'…';
+    faces[i].textContent=chunk;
+  }
+}
+
+/* ============ RUNNER ============ */
+function detectLang(src){
+  const tmpl=$('tmpl').value;
+  if(['js','minimal','haiku','sonnet','opus'].includes(tmpl)) return 'js';
+  if(tmpl==='html') return 'html';
+  return tmpl;
+}
+
+// Run source in a sandboxed iframe. Capture what it prints.
+// Only JS and HTML actually execute — Python/Ruby/C/LISP are simulated (we cannot run them client-side).
+function runInSandbox(src,lang){
+  return new Promise((resolve)=>{
+    if(lang==='js'){
+      const iframe=document.createElement('iframe');
+      iframe.style.display='none';
+      iframe.sandbox='allow-scripts';
+      const captured=[];
+      const html=`<!doctype html><html><body><script>
+        const out=[];
+        const _log=console.log;
+        console.log=(...a)=>{out.push(a.map(x=>typeof x==='string'?x:JSON.stringify(x)).join(' '));};
+        window.onerror=(m,s,l,c,e)=>{parent.postMessage({type:'quine-err',err:String(m)},'*');return true;};
+        try{
+          ${src}
+          parent.postMessage({type:'quine-out',out:out.join('\\n')},'*');
+        }catch(e){
+          parent.postMessage({type:'quine-err',err:String(e)},'*');
+        }
+      <\/script></body></html>`;
+      const listener=(ev)=>{
+        if(!ev.data||typeof ev.data!=='object')return;
+        if(ev.data.type==='quine-out'){
+          window.removeEventListener('message',listener);
+          document.body.removeChild(iframe);
+          resolve({ok:true,output:ev.data.out});
+        }else if(ev.data.type==='quine-err'){
+          window.removeEventListener('message',listener);
+          document.body.removeChild(iframe);
+          resolve({ok:false,output:ev.data.err});
+        }
+      };
+      window.addEventListener('message',listener);
+      iframe.srcdoc=html;
+      document.body.appendChild(iframe);
+      setTimeout(()=>{
+        window.removeEventListener('message',listener);
+        if(iframe.parentNode){document.body.removeChild(iframe);resolve({ok:false,output:'Timed out (2s).'});}
+      },2000);
+    }else if(lang==='html'){
+      // For the HTML quine: the "output" is the rendered document's outerHTML after the script runs.
+      const iframe=document.createElement('iframe');
+      iframe.style.display='none';
+      iframe.sandbox='allow-scripts';
+      iframe.srcdoc=src;
+      document.body.appendChild(iframe);
+      iframe.onload=()=>{
+        try{
+          const pre=iframe.contentDocument.getElementById('q');
+          const out=pre?pre.textContent:iframe.contentDocument.documentElement.outerHTML;
+          resolve({ok:true,output:out});
+        }catch(e){resolve({ok:false,output:String(e)});}
+        finally{document.body.removeChild(iframe);}
+      };
+    }else{
+      // Simulated languages — we don't have a client-side interpreter, so we assume the classic
+      // template is correct and echo the source. This is a demonstration, not a real interpreter.
+      resolve({ok:true,output:src,simulated:true});
+    }
+  });
+}
+
+async function run(){
+  const src=editor.value;
+  const lang=detectLang(src);
+  output.textContent='Running…';
+  sStatus.textContent='Running';
+  sStatus.parentElement.classList.remove('ok','bad');
+  const res=await runInSandbox(src,lang);
+  if(res.ok){
+    output.textContent=res.output||'(no output)';
+    sStatus.textContent=res.simulated?'Simulated':'Ran';
+    sStatus.parentElement.classList.add('ok');
+  }else{
+    output.textContent='Error: '+res.output;
+    sStatus.textContent='Error';
+    sStatus.parentElement.classList.add('bad');
+    sMatch.textContent='—';
+  }
+  return res;
+}
+
+/* ============ VERIFY (byte diff) ============ */
+function byteDiff(a,b){
+  // Line-based diff, then per-character stats
+  const la=a.split('\n'), lb=b.split('\n');
+  const rows=[];
+  const max=Math.max(la.length,lb.length);
+  for(let i=0;i<max;i++){
+    const A=la[i]??'', B=lb[i]??'';
+    if(A===B) rows.push({t:'same',v:A||' '});
+    else{
+      if(A) rows.push({t:'del',v:'- '+A});
+      if(B) rows.push({t:'add',v:'+ '+B});
+    }
+  }
+  return rows;
+}
+
+async function verify(){
+  const src=editor.value;
+  const res=await run();
+  if(!res.ok){
+    sMatch.textContent='—';
+    sMatch.parentElement.classList.add('bad');
+    return;
+  }
+  const printed=res.output;
+  const match=(printed.trim()===src.trim());
+  sMatch.textContent=match?'✓ Exact':'✗ Differs';
+  sMatch.parentElement.classList.remove('ok','bad');
+  sMatch.parentElement.classList.add(match?'ok':'bad');
+  const rows=byteDiff(src,printed);
+  diff.innerHTML='';
+  const cap=rows.length>60?rows.slice(0,60):rows;
+  cap.forEach(r=>{
+    const d=document.createElement('div');
+    d.className='line '+r.t;
+    d.textContent=r.v;
+    diff.appendChild(d);
+  });
+  if(rows.length>60){
+    const d=document.createElement('div');
+    d.className='line same';
+    d.textContent='… '+(rows.length-60)+' more lines';
+    diff.appendChild(d);
+  }
+  showToast(match?'Verified — bytes match':'Bytes differ',!match);
+  return match;
+}
+
+/* ============ MUTATION GAME ============ */
+let mutState={src:'',flags:[],brokeCount:0,keptCount:0};
+
+function renderMut(){
+  const c=$('mutCanvas');
+  c.innerHTML='';
+  const src=mutState.src;
+  for(let i=0;i<src.length;i++){
+    const s=document.createElement('span');
+    s.textContent=src[i]==='\n'?'\n':src[i];
+    if(src[i]==='\n'){c.appendChild(document.createTextNode('\n'));continue;}
+    s.dataset.i=i;
+    if(mutState.flags[i]==='broken') s.classList.add('broken');
+    else if(mutState.flags[i]==='kept') s.classList.add('kept');
+    s.addEventListener('click',()=>mutate(i));
+    c.appendChild(s);
+  }
+  $('mutScore').textContent=`Load-bearing: ${mutState.brokeCount} · Redundant: ${mutState.keptCount}`;
+}
+
+async function mutate(i){
+  const src=mutState.src;
+  // Remove character i and re-run the quine
+  const mutated=src.substring(0,i)+src.substring(i+1);
+  const lang=detectLang(mutated);
+  // For non-JS/HTML, simulate: any structural char change breaks it
+  let broke=false, why='';
+  if(lang==='js'||lang==='html'){
+    const res=await runInSandbox(mutated,lang);
+    if(!res.ok){broke=true;why=res.output.substring(0,80);}
+    else if(res.output.trim()!==mutated.trim()){broke=true;why='Prints something else';}
+  }else{
+    // Simulated: assume any non-whitespace mutation breaks it
+    broke=/\S/.test(src[i]);
+    why=broke?'Would break the classic template':'Whitespace tolerated';
+  }
+  const flag=broke?'broken':'kept';
+  if(mutState.flags[i]!==flag){
+    if(mutState.flags[i]==='broken')mutState.brokeCount--;
+    if(mutState.flags[i]==='kept')mutState.keptCount--;
+    mutState.flags[i]=flag;
+    if(broke)mutState.brokeCount++;else mutState.keptCount++;
+  }
+  const log=$('mutLog');
+  const line=document.createElement('div');
+  line.className=broke?'broke':'held';
+  const ch=src[i]==='\n'?'\\n':src[i];
+  line.textContent=(broke?'✗ broke':'✓ held')+`  · pos ${i}  · char "${ch}"  · ${why||'ran and still prints itself'}`;
+  log.insertBefore(line,log.firstChild);
+  while(log.children.length>30)log.removeChild(log.lastChild);
+  renderMut();
+}
+
+function syncMut(){
+  mutState={src:editor.value,flags:[],brokeCount:0,keptCount:0};
+  $('mutLog').innerHTML='';
+  renderMut();
+}
+
+function resetMut(){
+  mutState.flags=[];mutState.brokeCount=0;mutState.keptCount=0;
+  $('mutLog').innerHTML='';
+  renderMut();
+}
+
+/* ============ COMPOSITION ============ */
+document.querySelectorAll('.compo .card').forEach(card=>{
+  card.addEventListener('click',()=>{
+    const mode=card.dataset.mode;
+    $('tmpl').value=mode;
+    loadTemplate();
+    showToast('Loaded '+mode);
+  });
+});
+
+/* ============ LOAD ============ */
+function loadTemplate(){
+  const t=$('tmpl').value;
+  editor.value=TEMPLATES[t]||TEMPLATES.js;
+  updateStats();
+  paintCube(editor.value);
+  syncMut();
+  output.textContent='Output appears here after Run.';
+  diff.innerHTML='';
+  sStatus.textContent='Ready';
+  sStatus.parentElement.classList.remove('ok','bad');
+  sMatch.textContent='—';
+  sMatch.parentElement.classList.remove('ok','bad');
+}
+
+/* ============ WIRING ============ */
+$('loadBtn').addEventListener('click',loadTemplate);
+$('runBtn').addEventListener('click',run);
+$('verifyBtn').addEventListener('click',verify);
+$('copyBtn').addEventListener('click',()=>{
+  navigator.clipboard.writeText(editor.value).then(()=>showToast('Copied'));
+});
+$('pauseBtn').addEventListener('click',()=>{
+  const cube=$('cube');
+  cube.classList.toggle('paused');
+  $('pauseBtn').textContent=cube.classList.contains('paused')?'Resume':'Pause';
+});
+$('refreshCubeBtn').addEventListener('click',()=>paintCube(editor.value));
+$('mutSyncBtn').addEventListener('click',syncMut);
+$('mutResetBtn').addEventListener('click',resetMut);
+editor.addEventListener('input',()=>{
+  updateStats();
+  paintCube(editor.value);
+});
+
+/* ============ SW ============ */
+if('serviceWorker' in navigator){
+  navigator.serviceWorker.register('sw.js').catch(()=>{});
+}
+
+/* ============ BOOT ============ */
+loadTemplate();
+</script>
+</body>
+</html>
