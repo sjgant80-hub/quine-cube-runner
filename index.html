@@ -247,7 +247,26 @@ const TEMPLATES = {
   py: `s='s=%r\\nprint(s%%s)'\nprint(s%s)`,
   rb: `s=%q(s=%q(Q);puts s.sub("Q",s));puts s.sub("Q",s)`,
   c: `#include <stdio.h>\nchar *s="#include <stdio.h>%cchar *s=%c%s%c;%cint main(){printf(s,10,34,s,34,10);return 0;}%c";\nint main(){printf(s,10,34,s,34,10);return 0;}`,
-  html: `<!doctype html><html><body><pre id=q></pre><script>var s=document.documentElement.outerHTML;document.getElementById('q').textContent=s;<\/script></body></html>`,
+  html: `<!doctype html><html><body><pre id=q></pre><script>var s=document.documentElement.outerHTML;document.getElementById('q').textContent=s;<\/script>
+
+<!-- ═══════════════════════ AUTOPILOT · fall-autopilot-kit ═══════════════════════ -->
+<script type="module">
+  try {
+    const { installAutopilot } = await import('https://sjgant80-hub.github.io/fall-autopilot-kit/src/autopilot.js');
+    const manifestRes = await fetch('https://sjgant80-hub.github.io/fall-autopilot-kit/manifests/quine-cube-runner.json');
+    const manifest = await manifestRes.json();
+    manifest.actions = manifest.actions.map(a => ({ ...a, run: async (params) => {
+      const fn = window._app?.[a.id];
+      if (typeof fn === 'function') return fn(params);
+      alert('Autopilot proposes: ' + a.name + ' · params: ' + JSON.stringify(params) + '\n\nThis tool has not yet implemented the ' + a.id + ' handler. Proposal logged to audit.');
+      return { stub: true, action: a.id, params };
+    }}));
+    manifest.state = () => ({ ...(window._app || {}), now: new Date().toISOString() });
+    installAutopilot(manifest);
+  } catch (e) { console.warn('[autopilot] init failed:', e); }
+</script>
+
+</body></html>`,
   lisp: `((lambda (x) (list x (list (quote quote) x))) (quote (lambda (x) (list x (list (quote quote) x)))))`,
   minimal: `(f=>f(f))(f=>console.log('(f=>f(f))('+f+')'))`,
   haiku: `(f=>f(f))(f=>\`(f=>f(f))(\${f})\`)`,
